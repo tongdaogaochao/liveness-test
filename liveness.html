@@ -1,67 +1,158 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh">
 <head>
   <meta charset="UTF-8">
-  <title>Face Liveness Detection</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>人脸识别验证</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
   <style>
-    body { margin:0; font-family: 'Segoe UI', sans-serif; text-align:center; background:#f5f5f5; }
-    .container { position: relative; display:inline-block; width:100%; max-width:420px; } 
-    #video { width:100%; border:1px solid #ccc; border-radius:8px; background:#000; }
-    #statusBox {
-      position: absolute;
-      bottom: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(0,0,0,0.6);
-      color: #fff;
-      padding: 8px 16px;
-      border-radius: 20px;
-      font-size: 16px;
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', 'PingFang SC', sans-serif;
+      background: linear-gradient(135deg, #e8f0fe, #ffffff);
+      color: #333;
       text-align: center;
-      width: 80%;
-      max-width: 300px;
     }
-    #progressBar {
-      margin-top:6px;
-      height:6px;
-      width:100%;
-      background: rgba(255,255,255,0.3);
-      border-radius: 3px;
-      overflow: hidden;
+
+    h2 {
+      margin: 20px 0 10px;
+      font-size: 20px;
+      font-weight: 600;
+      color: #003366;
     }
-    #progressFill {
-      height:100%;
-      width:0%;
-      background: #4caf50;
-      transition: width 0.1s linear;
+
+    .container {
+      position: relative;
+      width: 90%;
+      max-width: 400px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
     }
-    #startBtn { margin-top:12px; padding:10px 20px; font-size:16px; border:0; border-radius:6px; background:#3a6cac; color:#fff; cursor:pointer; }
+
+    .video-wrapper {
+      position: relative;
+      display: inline-block;
+      width: 80vw;
+      max-width: 280px;
+    }
+
+    #video {
+      width: 100%;
+      aspect-ratio: 1/1;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 5px solid #003366;
+      background: #000;
+      z-index: 2;
+      position: relative;
+    }
+
+    .progress-ring {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(-90deg);
+      width: 110%;
+      height: 110%;
+      z-index: 1;
+    }
+
+    .progress-ring circle {
+      fill: none;
+      stroke-width: 6;
+      stroke-linecap: round;
+    }
+
+    .progress-ring__background {
+      stroke: #d6d6d6;
+    }
+
+    .progress-ring__progress {
+      stroke: url(#grad);
+      stroke-dasharray: 880;
+      stroke-dashoffset: 880;
+      transition: stroke-dashoffset 0.2s linear;
+    }
+
+    #statusBox {
+      margin-top: 14px;
+      padding: 10px;
+      background: rgba(0, 51, 102, 0.9);
+      color: #fff;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 1.4;
+    }
+
+    #startBtn {
+      margin-top: 18px;
+      padding: 14px;
+      width: 100%;
+      max-width: 280px;
+      font-size: 16px;
+      border: none;
+      border-radius: 28px;
+      background: linear-gradient(135deg, #003366, #0055a5);
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    #startBtn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    #startBtn:active {
+      background: #002244;
+    }
   </style>
 </head>
 <body>
-  <h2>Face Liveness Detection</h2>
+  <h2>人脸识别验证</h2>
   <div class="container">
-    <video id="video" autoplay muted playsinline></video>
+    <div class="video-wrapper">
+      <video id="video" autoplay muted playsinline></video>
+      <svg class="progress-ring" viewBox="0 0 300 300">
+        <defs>
+          <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#3a6cac"/>
+            <stop offset="100%" stop-color="#4caf50"/>
+          </linearGradient>
+        </defs>
+        <circle class="progress-ring__background" cx="150" cy="150" r="140"></circle>
+        <circle class="progress-ring__progress" cx="150" cy="150" r="140"></circle>
+      </svg>
+    </div>
     <div id="statusBox">
-      <div id="status">Tap "Start" to begin</div>
-      <div id="progressBar"><div id="progressFill"></div></div>
+      <!-- ✅ 初始提示改成“请将脸对准镜头” -->
+      <div id="status">请将脸对准镜头</div>
     </div>
   </div>
-  <br>
-  <button id="startBtn">Start Detection & Record</button>
+  <button id="startBtn">开始人脸识别</button>
 
   <script>
     const video = document.getElementById('video');
     const statusEl = document.getElementById('status');
-    const progressFill = document.getElementById('progressFill');
     const startBtn = document.getElementById('startBtn');
+
+    const progressCircle = document.querySelector('.progress-ring__progress');
+    const radius = 140;
+    const circumference = 2 * Math.PI * radius;
+    progressCircle.style.strokeDasharray = circumference;
+    progressCircle.style.strokeDashoffset = circumference;
 
     let recorder;
     let chunks = [];
 
+    function setProgress(percent) {
+      const offset = circumference - (percent / 100) * circumference;
+      progressCircle.style.strokeDashoffset = offset;
+    }
+
     function getSupportedMimeType() {
-      // iOS Safari prefers mp4
       if (MediaRecorder.isTypeSupported("video/mp4;codecs=h264,aac")) return "video/mp4;codecs=h264,aac";
       if (MediaRecorder.isTypeSupported("video/webm;codecs=vp9")) return "video/webm;codecs=vp9";
       if (MediaRecorder.isTypeSupported("video/webm;codecs=vp8")) return "video/webm;codecs=vp8";
@@ -72,31 +163,40 @@
     function startRecording(stream) {
       const mimeType = getSupportedMimeType();
       if (!mimeType) {
-        statusEl.textContent = "Recording not supported on this device.";
-        statusEl.style.color = "red";
+        statusEl.textContent = "当前设备不支持录制";
         return;
       }
-
       recorder = new MediaRecorder(stream, { mimeType });
       chunks = [];
-
       recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
       recorder.onstop = () => {
         const blob = new Blob(chunks, { type: mimeType });
-
-        // Convert to Base64
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const base64data = reader.result.split(',')[1];
-          // send video back to parent page
-          window.parent.postMessage({ type: "livenessDone", videoBase64: base64data }, "*");
-          statusEl.textContent = "Video uploaded successfully.";
-          statusEl.style.color = "#4caf50";
-        };
-        reader.readAsDataURL(blob);
+        uploadVideo(blob);
       };
-
       recorder.start();
+    }
+
+    // 表单上传
+    function uploadVideo(blob) {
+      statusEl.textContent = "正在上传视频...";
+      statusEl.style.color = "#ffeb3b";
+
+      const formData = new FormData();
+      formData.append("file", blob, "liveness.mp4");
+
+      fetch("https://your-server.com/upload", {   // TODO: 替换成你的后端接口
+        method: "POST",
+        body: formData
+      })
+      .then(res => res.json())
+      .then(data => {
+        statusEl.textContent = "上传成功 ✅";
+        statusEl.style.color = "#4caf50";
+      })
+      .catch(err => {
+        statusEl.textContent = "上传失败: " + err.message;
+        statusEl.style.color = "red";
+      });
     }
 
     function runStep(text, duration=3000) {
@@ -105,12 +205,11 @@
         statusEl.style.color = "#fff";
         let elapsed = 0;
         const step = 100;
-        progressFill.style.width = "0%";
-
+        setProgress(0);
         const timer = setInterval(() => {
           elapsed += step;
           const percent = Math.min(100, (elapsed / duration) * 100);
-          progressFill.style.width = percent + "%";
+          setProgress(percent);
           if (elapsed >= duration) {
             clearInterval(timer);
             resolve();
@@ -120,24 +219,28 @@
     }
 
     async function startTest() {
-      await runStep("Please nod", 3000);
-      await runStep("Please open your mouth", 3000);
-      await runStep("Please blink", 3000);
-      statusEl.textContent = "Detection finished. Uploading video...";
+      await runStep("请点头", 3000);
+      await runStep("请张嘴", 3000);
+      await runStep("请眨眼", 3000);
+      statusEl.textContent = "检测完成，正在处理视频...";
       statusEl.style.color = "#ffeb3b";
-      progressFill.style.width = "100%";
+      setProgress(100);
       recorder.stop();
     }
 
     startBtn.onclick = async () => {
       try {
+        startBtn.disabled = true; // ✅ 点击后禁用按钮
+        startBtn.style.display = "none"; // ✅ 隐藏按钮
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode:"user" }, audio: true });
         video.srcObject = stream;
         startRecording(stream);
         startTest();
       } catch (err) {
-        statusEl.textContent = "Camera error: " + err.message;
+        statusEl.textContent = "摄像头错误: " + err.message;
         statusEl.style.color = "red";
+        startBtn.disabled = false;
+        startBtn.style.display = "block";
       }
     };
   </script>
